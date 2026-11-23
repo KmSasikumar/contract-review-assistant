@@ -194,7 +194,9 @@ Derived from the verdicts (`backend/app/checklist.py`):
 
 - A 429 from a chat provider is **retried** (up to 4 attempts, 15 s / 30 s /
   60 s backoff, honouring `Retry-After`) before it is reported — free tiers
-  recover within a minute.
+  recover within a minute. When a backup provider is configured, the
+  primary fails fast (1 attempt) and the backup is the retry instead, so a
+  review never burns minutes re-trying a quota that resets tomorrow.
 - If OpenRouter's **daily** free quota (50 requests/day) is exhausted,
   retries cannot help, so the review falls back to Groq (`qwen/qwen3.8-27b`)
   for chat and to keyword retrieval for embeddings, and says so on the
@@ -284,10 +286,10 @@ merely unsetting them would leak a real key from `.env` into the suite
 - **Tests: 45 passed, 0 failed** (SQLite, rule-based stand-in).
 - **Eval, pipeline mode (no key): 18/18 = 100%.**
 - **Eval, live mode (OpenRouter quota exhausted that day, so Groq backup +
-  keyword retrieval): 10/18 = 56%** — the complete contract scored 8/8;
-  the missing-items contract lost 6 items to Groq's per-minute rate limit
-  before retries were added. Re-running the live eval after the retry fix
-  is the remaining verification step (see "Known limitations").
+  keyword retrieval): 18/18 = 100%.** All 16 checklist items correct on
+  both contracts, both follow-up chats answered with verified quotes. A few
+  Groq per-minute rate limits were hit mid-run and recovered by the retry
+  backoff (15–30 s waits); total live-eval runtime ~3.5 min.
 - **Frontend production build: passes** (`npm run build`, 177 kB JS).
 - **HTTP smoke test (SQLite):** `/api/health` reports
   `ai_configured: true, auth_configured: false` (no Clerk keys yet);

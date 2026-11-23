@@ -52,11 +52,16 @@ class _ChatLLM:
     mode (response_format) and SSE streaming, so one client serves both.
     """
 
-    def __init__(self, url: str, api_key: str, model: str, provider: str):
+    def __init__(self, url: str, api_key: str, model: str, provider: str,
+                 max_attempts: int = _MAX_ATTEMPTS):
         self.url = url
         self.api_key = api_key
         self.model = model
         self.provider = provider
+        # How many tries a 429 gets. A provider that is only a fallback's
+        # primary is created with max_attempts=1: retrying it is pointless
+        # when the backup is the retry (see get_llm).
+        self.max_attempts = max_attempts
 
     def _headers(self):
         return {
@@ -71,7 +76,7 @@ class _ChatLLM:
         within a minute — and only then reported as a rate limit.
         """
         last_error: RateLimitError | None = None
-        for attempt in range(_MAX_ATTEMPTS):
+        for attempt in range(self.max_attempts):
             resp = http_client.post(
                 self.url,
                 headers=self._headers(),
@@ -88,10 +93,10 @@ class _ChatLLM:
                 last_error = RateLimitError(
                     f"{self.provider} rate limit reached. Please wait a minute and retry."
                 )
-                if attempt + 1 < _MAX_ATTEMPTS:
+                if attempt + 1 < self.max_attempts:
                     logger.warning(
                         "%s rate limit (attempt %d/%d); retrying in %ss",
-                        self.provider, attempt + 1, _MAX_ATTEMPTS, wait,
+                        self.provider, attempt + 1, self.max_attempts, wait,
                     )
                     time.sleep(wait)
                     continue
@@ -115,7 +120,7 @@ class _ChatLLM:
         A 429 before the first token is retried like complete_json; once
         tokens have started flowing the error is reported, not restarted.
         """
-        for attempt in range(_MAX_ATTEMPTS):
+        for attempt in range(self.max_attempts):
             yielded = False
             retry = False
             try:
@@ -127,11 +132,11 @@ class _ChatLLM:
                     timeout=180,
                 ) as resp:
                     if resp.status_code == 429:
-                        if attempt + 1 < _MAX_ATTEMPTS:
+                        if attempt + 1 < self.max_attempts:
                             wait = _retry_wait(resp, attempt)
                             logger.warning(
                                 "%s rate limit on stream (attempt %d/%d); retrying in %ss",
-                                self.provider, attempt + 1, _MAX_ATTEMPTS, wait,
+                                self.provider, attempt + 1, self.max_attempts, wait,
                             )
                             time.sleep(wait)
                             retry = True
@@ -162,13 +167,14 @@ class _ChatLLM:
             except RateLimitError:
                 if yielded:
                     raise
-                if attempt + 1 >= _MAX_ATTEMPTS:
+                if attempt + 1 >= self.max_attempts:
                     raise
                 continue
 
 
 class OpenRouterLLM(_ChatLLM):
-    def __init__(self, api_key: str | None = None, model: str | None = None):
+    def __init__(self, api_key: str | None = None, model: str | None = None,
+                 max_attempts: int = _MAX_ATTEMPTS):
         api_key = api_key or settings.openrouter_api_key
         if not api_key:
             raise AIError(
@@ -180,6 +186,7 @@ class OpenRouterLLM(_ChatLLM):
             api_key,
             model or settings.openrouter_chat_model,
             "OpenRouter",
+            max_attempts,
         )
 
 
@@ -192,7 +199,8 @@ class GroqLLM(_ChatLLM):
     free daily quota (50 free-model requests/day).
     """
 
-    def __init__(self, api_key: str | None = None, model: str | None = None):
+    def __init__(self, api_key: str | None = None, model: str | None = None,
+                 max_attempts: int = _MAX_ATTEMPTS):
         api_key = api_key or settings.groq_api_key
         if not api_key:
             raise AIError("GROQ_API_KEY is not set. Add it to .env (see README).")
@@ -201,6 +209,7 @@ class GroqLLM(_ChatLLM):
             api_key,
             model or settings.groq_chat_model,
             "Groq",
+            max_attempts,
         )
 
 
@@ -336,10 +345,12 @@ def get_llm():
     set; Groq alone when only its key is set. The rule-based stand-in
     applies only when REVIEW_FALLBACK=rule_based is set (tests/eval)."""
     if settings.openrouter_api_key:
-        primary = OpenRouterLLM()
+        # The backup IS the retry for the primary: a rate-limited primary
+        # fails fast (1 attempt) instead of burning minutes on retries.
+        primary = OpenRouterLLM(max_attempts=1)
         if settings.groq_api_key:
             return FallbackLLM(primary, GroqLLM())
-        return primary
+        return OpenRouterLLM()
     if settings.groq_api_key:
         return GroqLLM()
     if settings.review_fallback == "rule_based":
