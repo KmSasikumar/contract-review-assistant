@@ -1,0 +1,48 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: contract
+      POSTGRES_PASSWORD: contract
+      POSTGRES_DB: contract_review
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contract -d contract_review"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://contract:contract@db:5432/contract_review
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-}
+      CLERK_ISSUER: ${CLERK_ISSUER:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_CHAT_MODEL: ${OPENROUTER_CHAT_MODEL:-nvidia/nemotron-3-ultra-550b-a55b:free}
+      OPENROUTER_EMBED_MODEL: ${OPENROUTER_EMBED_MODEL:-nvidia/nemotron-3.5-embed-1b:free}
+      REVIEW_FALLBACK: ${REVIEW_FALLBACK:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

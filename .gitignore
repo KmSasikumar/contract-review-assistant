@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Env / secrets — NEVER commit real keys
+.env
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Uploads / local data
+data/
+*.db
+*.sqlite3
