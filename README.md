@@ -42,6 +42,26 @@ cp .env.example .env.local   # VITE_CLERK_PUBLISHABLE_KEY + VITE_API_URL
 npm run dev                  # http://localhost:5173, proxies /api to :8000
 ```
 
+### Live-test notes (23 Nov 2026)
+
+Three fixes found by the live end-to-end test against real Clerk + Groq:
+
+- **TLS behind an egress proxy** (`backend/app/http_client.py`): `httpx` with
+  `trust_env=False` ignores `SSL_CERT_FILE`, so the Clerk JWKS fetch failed
+  `CERTIFICATE_VERIFY_FAILED` where `curl` worked. The client now uses
+  `SSL_CERT_FILE` when it is set and exists. If your network MITMs TLS, set
+  `SSL_CERT_FILE` to the proxy CA bundle.
+- **Clerk clock skew** (`backend/app/auth.py`): the Clerk server clock runs
+  ~2 s ahead, so freshly minted tokens intermittently failed the `iat` check.
+  JWT verification now allows 10 s of leeway.
+- **Chat retrieval missed morphological variants** (`backend/app/retrieval.py`):
+  asking "What are the payment terms?" retrieved nothing useful, because the
+  clause says "payable" / "fees" and keyword matching was exact-substring.
+  Single-word keywords now match on a light stem (`payment` ~ `payable`,
+  `terms` ~ `term`, `parties` ~ `party`), phrase keywords (`entered into`,
+  `starts on`) still match as substrings, and the chunk's section heading
+  ("3. Fees and Payment") is searched too. All 45 tests still pass.
+
 ## Keys — where each one goes
 
 | Key | Where to create it | Where it goes |

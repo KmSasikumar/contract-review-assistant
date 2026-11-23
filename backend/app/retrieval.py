@@ -53,9 +53,41 @@ def cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
+def _stem(word: str) -> str:
+    """Light stem: strip common suffixes so morphological variants match
+    (payment ~ payable, terms ~ term, parties ~ party, fees ~ fee).
+    Keeps at least 3 letters, so short words are never mangled."""
+    if word.endswith("ies") and len(word) - 3 >= 3:
+        word = word[:-3] + "y"
+    changed = True
+    while changed:
+        changed = False
+        for suf in ("ments", "ment", "able", "ible", "ing", "ed", "es", "s"):
+            if word.endswith(suf) and len(word) - len(suf) >= 3:
+                word = word[: -len(suf)]
+                changed = True
+                break
+    return word
+
+
 def keyword_hits(text: str, keywords: list[str]) -> int:
+    """Count keywords present in text.
+
+    Single words match on light stems, so a question asking about
+    'payment terms' finds a clause about 'payable fees'. Phrase keywords
+    ('entered into', 'starts on', 'continues for') match as substrings,
+    exactly as before — stemming must never drop a phrase match."""
     low = text.lower()
-    return sum(1 for kw in keywords if kw.lower() in low)
+    stems = {_stem(w) for w in re.findall(r"[a-z]{3,}", low)}
+    hits = 0
+    for kw in keywords:
+        k = kw.lower()
+        if " " in k:
+            if k in low:
+                hits += 1
+        elif _stem(k) in stems:
+            hits += 1
+    return hits
 
 
 def retrieve(
@@ -98,7 +130,9 @@ def retrieve(
 
     scored = []
     for ch in chunks:
-        hits = keyword_hits(ch.text, keywords)
+        # Search the section heading too: a clause headed "3. Fees and
+        # Payment" is about payment even if the paragraph body says "payable".
+        hits = keyword_hits((ch.section or "") + " " + ch.text, keywords)
         score = vec_scores.get(str(ch.id), 0.0) + 0.25 * min(hits, 4)
         scored.append((score, hits, ch))
     # Keyword hits rank first, vector score breaks ties.

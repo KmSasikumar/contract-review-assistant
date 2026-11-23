@@ -69,6 +69,10 @@ def verify_token(token: str, jwks: dict | None = None) -> str:
         public_key,
         algorithms=["RS256"],
         options=options,
+        # Clerk's servers and this server never share a clock exactly; a
+        # token minted a second ago can still have iat in our future.
+        # 10s of leeway is the standard tolerance (applies to exp/nbf/iat).
+        leeway=10,
     )
     if settings.clerk_issuer and claims.get("iss") != settings.clerk_issuer:
         raise ValueError("wrong issuer")
