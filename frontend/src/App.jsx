@@ -89,10 +89,14 @@ export default function App() {
         <h1>Contract Review Assistant</h1>
         {isSignedIn && (
           <div className="topbar-actions">
-            <button type="button" className="settings-btn" onClick={() => setShowSettings(true)}>
-              Settings
-            </button>
-            <UserButton afterSignOutUrl="/" />
+            <UserButton afterSignOutUrl="/">
+              <UserButton.MenuItems>
+                <UserButton.Action
+                  label="AI model"
+                  onClick={() => setShowSettings(true)}
+                />
+              </UserButton.MenuItems>
+            </UserButton>
           </div>
         )}
       </header>
