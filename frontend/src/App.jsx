@@ -214,7 +214,11 @@ function ContractDetail({ contract, getToken, onRefresh }) {
           onRefresh()
         }
       } catch {
-        clearInterval(t)
+        // Transient error (e.g. backend waking from sleep, brief network
+        // blip) — keep polling; the next tick retries. Stopping here used
+        // to leave the UI stuck on "Processing…" even after the backend
+        // had finished. Polling only ends when the status leaves
+        // "processing" or this component unmounts.
       }
     }, 3000)
     return () => clearInterval(t)

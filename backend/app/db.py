@@ -45,7 +45,11 @@ class Base(DeclarativeBase):
 def make_engine(url: str | None = None):
     url = url or settings.database_url
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, connect_args=connect_args)
+    # pool_pre_ping: Neon (free tier) suspends compute after ~5 min idle and
+    # drops pooled connections. Without this, the first query after a
+    # suspend fails with a stale-connection error; with it, SQLAlchemy
+    # tests the connection first and reconnects transparently.
+    return create_engine(url, connect_args=connect_args, pool_pre_ping=True)
 
 
 engine = make_engine()

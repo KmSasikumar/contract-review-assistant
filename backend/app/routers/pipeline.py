@@ -38,49 +38,71 @@ def process_contract(contract_id: uuid.UUID, data: bytes, filename: str) -> None
         if contract is None:
             return
         try:
-            text, pages = parse_file(filename, data)
-        except ParseError as exc:
-            contract.status, contract.error = "failed", str(exc)
-            db.commit()
-            return
-        contract.full_text, contract.page_count = text, pages
-
-        drafts = chunk_text(text)
-        embedder = get_embedder()
-        try:
-            vectors = embedder.embed([d.text for d in drafts]) if drafts else []
-        except RateLimitError:
-            # OpenRouter's free tier is 50 free-model requests/day; once it
-            # is exhausted the review would otherwise fail outright. Fall
-            # back to keyword retrieval (hash vectors only break ties) and
-            # say so on the contract.
-            embedder = HashEmbedder()
-            vectors = embedder.embed([d.text for d in drafts]) if drafts else []
-            contract.review_note = (
-                "OpenRouter embeddings were rate-limited, so retrieval used "
-                "keywords instead of live embeddings."
-            )
-        for i, (draft, vec) in enumerate(zip(drafts, vectors)):
-            db.add(
-                Chunk(
-                    contract_id=contract.id,
-                    user_id=contract.user_id,
-                    chunk_index=i,
-                    page=draft.page,
-                    section=draft.section,
-                    text=draft.text,
-                    embedding=vec,
-                )
-            )
-        db.commit()
-        try:
-            run_review(db, contract, embedder=embedder)
-            contract.status, contract.error = "reviewed", None
-        except Exception as exc:  # AI unavailable (no key / rate limit / outage)
-            contract.status, contract.error = "failed", str(exc)
-        db.commit()
+            _process(db, contract, data, filename)
+        except Exception as exc:
+            # Any unexpected failure (corrupt file, AI outage, DB error)
+            # must land the contract in "failed" with a message. Without
+            # this, the contract stays "processing" forever and the
+            # frontend polls it forever — the user sees a stuck spinner
+            # with no error and no retry button.
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            try:
+                contract.status, contract.error = "failed", str(exc) or exc.__class__.__name__
+                db.commit()
+            except Exception:
+                pass
     finally:
         db.close()
+
+
+def _process(db: Session, contract: Contract, data: bytes, filename: str) -> None:
+    """Parse -> chunk -> embed -> review. Raises on any failure; the caller
+    turns the failure into a "failed" contract status."""
+    try:
+        text, pages = parse_file(filename, data)
+    except ParseError as exc:
+        contract.status, contract.error = "failed", str(exc)
+        db.commit()
+        return
+    contract.full_text, contract.page_count = text, pages
+
+    drafts = chunk_text(text)
+    embedder = get_embedder()
+    try:
+        vectors = embedder.embed([d.text for d in drafts]) if drafts else []
+    except RateLimitError:
+        # OpenRouter's free tier is 50 free-model requests/day; once it
+        # is exhausted the review would otherwise fail outright. Fall
+        # back to keyword retrieval (hash vectors only break ties) and
+        # say so on the contract.
+        embedder = HashEmbedder()
+        vectors = embedder.embed([d.text for d in drafts]) if drafts else []
+        contract.review_note = (
+            "OpenRouter embeddings were rate-limited, so retrieval used "
+            "keywords instead of live embeddings."
+        )
+    for i, (draft, vec) in enumerate(zip(drafts, vectors)):
+        db.add(
+            Chunk(
+                contract_id=contract.id,
+                user_id=contract.user_id,
+                chunk_index=i,
+                page=draft.page,
+                section=draft.section,
+                text=draft.text,
+                embedding=vec,
+            )
+        )
+    db.commit()
+    try:
+        run_review(db, contract, embedder=embedder)
+        contract.status, contract.error = "reviewed", None
+    except Exception as exc:  # AI unavailable (no key / rate limit / outage)
+        contract.status, contract.error = "failed", str(exc)
+    db.commit()
 
 
 def retry_review(contract_id: uuid.UUID) -> Contract | None:
