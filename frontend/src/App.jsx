@@ -26,6 +26,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [authMode, setAuthMode] = useState('signin') // signin | signup
+  const [showSettings, setShowSettings] = useState(false)
 
   async function refresh() {
     try {
@@ -82,8 +83,19 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <h1>Contract Review Assistant</h1>
-        {isSignedIn && <UserButton afterSignOutUrl="/" />}
+        {isSignedIn && (
+          <div className="topbar-actions">
+            <button type="button" className="settings-btn" onClick={() => setShowSettings(true)}>
+              Settings
+            </button>
+            <UserButton afterSignOutUrl="/" />
+          </div>
+        )}
       </header>
+
+      {isSignedIn && showSettings && (
+        <SettingsModal getToken={getToken} onClose={() => setShowSettings(false)} />
+      )}
 
       {!isLoaded ? (
         <p className="muted">Loading…</p>
@@ -277,6 +289,91 @@ function ContractDetail({ contract, getToken, onRefresh }) {
           highlightChunkId={jumpChunkId}
         />
       )}
+    </div>
+  )
+}
+
+function SettingsModal({ getToken, onClose }) {
+  const [settings, setSettings] = useState(null)
+  const [selected, setSelected] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    apiJson(getToken, '/api/settings')
+      .then((data) => {
+        if (cancelled) return
+        setSettings(data)
+        setSelected(`${data.chat_provider}|${data.chat_model}`)
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e.message || 'Could not load settings')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [getToken])
+
+  async function onSave() {
+    const [provider, model] = selected.split('|')
+    setSaving(true)
+    setMessage('')
+    setError('')
+    try {
+      const saved = await apiJson(getToken, '/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_provider: provider, chat_model: model }),
+      })
+      setSettings(saved)
+      setMessage('Saved. New reviews and chats will use this model.')
+    } catch (e) {
+      setError(e.message || 'Could not save settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Settings">
+        <h2>Settings</h2>
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+        {message && <div className="notice">{message}</div>}
+        {!settings ? (
+          <p className="muted">Loading…</p>
+        ) : (
+          <>
+            <label>
+              AI model for reviews and chat
+              <select value={selected} onChange={(e) => setSelected(e.target.value)}>
+                {settings.options.map((o) => (
+                  <option key={`${o.provider}|${o.model}`} value={`${o.provider}|${o.model}`}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="muted">
+              Default is Gemini 2.5 Flash. The model applies to new reviews and chats.
+            </p>
+            <div className="modal-actions">
+              <button type="button" onClick={onSave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button type="button" className="secondary" onClick={onClose}>
+                Close
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .checklist import CHECKLIST
 from .embeddings import get_embedder
-from .llm import get_llm
+from .llm import get_llm_for_user
 from .models import Chunk, Contract, ReviewItem
 from .quotes import quote_in_text
 from .retrieval import format_excerpts, retrieve
@@ -59,7 +59,7 @@ def run_review(
     embedder=None,
 ) -> list[ReviewItem]:
     """Run the full checklist review for one contract. Returns the items."""
-    llm = llm or get_llm()
+    llm = llm or get_llm_for_user(db, contract.user_id)
     embedder = embedder or get_embedder()
     user_id = contract.user_id
 

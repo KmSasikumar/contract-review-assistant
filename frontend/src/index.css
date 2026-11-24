@@ -116,3 +116,34 @@ body {
 .chunk-highlight { border-color: var(--accent); background: var(--accent-soft); }
 .chunk-meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
 .chunk p { margin: 0; white-space: pre-wrap; word-break: break-word; }
+
+.topbar-actions { display: flex; gap: 10px; align-items: center; }
+.settings-btn {
+  padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); cursor: pointer; font-size: 0.95rem;
+}
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 80px 16px 16px; z-index: 50;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 20px; width: 100%; max-width: 480px;
+}
+.modal h2 { margin: 0 0 12px; }
+.modal label { display: block; font-weight: 600; }
+.modal select {
+  display: block; width: 100%; margin-top: 8px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 8px; font-size: 1rem;
+  background: var(--bg);
+}
+.modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+.modal-actions button {
+  padding: 10px 16px; border-radius: 8px; border: 1px solid var(--accent);
+  background: var(--accent); color: #fff; cursor: pointer; font-size: 0.95rem;
+}
+.modal-actions button.secondary {
+  background: var(--panel); color: var(--ink); border-color: var(--line);
+}
+.modal-actions button:disabled { opacity: 0.5; cursor: default; }

@@ -124,3 +124,23 @@ class ChatMessage(Base):
     )
 
     contract: Mapped[Contract] = relationship("Contract", back_populates="messages")
+
+
+class UserSettings(Base):
+    """Per-user AI settings. One row per Clerk user id.
+
+    ``chat_provider`` + ``chat_model`` pick the LLM for reviews and
+    chat. Defaults to Gemini (the trusted provider). Only the
+    (provider, model) pairs in llm.MODEL_OPTIONS can be saved.
+    """
+
+    __tablename__ = "user_settings"
+
+    user_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    chat_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="gemini")
+    chat_model: Mapped[str] = mapped_column(
+        String(128), nullable=False, default="gemini-2.5-flash"
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
+    )

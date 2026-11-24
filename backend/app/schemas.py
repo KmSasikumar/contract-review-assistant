@@ -71,3 +71,14 @@ class HealthOut(BaseModel):
     ok: bool
     ai_configured: bool
     auth_configured: bool
+
+
+class SettingsIn(BaseModel):
+    chat_provider: str
+    chat_model: str
+
+
+class SettingsOut(BaseModel):
+    chat_provider: str
+    chat_model: str
+    options: list[dict]

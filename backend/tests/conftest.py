@@ -15,6 +15,7 @@ os.environ["REVIEW_FALLBACK"] = "rule_based"
 # tests and the suite would call the live APIs instead of the stand-ins.
 os.environ["OPENROUTER_API_KEY"] = ""
 os.environ["GROQ_API_KEY"] = ""
+os.environ["GEMINI_API_KEY"] = ""
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

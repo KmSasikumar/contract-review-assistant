@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     groq_chat_model: str = "qwen/qwen3.8-27b"
 
+    # Primary chat provider (Google Gemini, OpenAI-compatible endpoint).
+    # Trusted over OpenRouter/Groq; those two remain as fallbacks.
+    gemini_api_key: str = ""
+    gemini_chat_model: str = "gemini-2.5-flash"
+
     # Dev/eval only: "rule_based" runs the review pipeline without an
     # OpenRouter key, using a deterministic keyword extractor. Never use in prod.
     review_fallback: str = ""

@@ -1,9 +1,10 @@
-"""Chat completions via OpenRouter (free models), with Groq as a backup
-when OpenRouter is rate-limited, plus a deterministic rule-based stand-in
-used by tests and the eval script when no key is set.
+"""Chat completions via Gemini (primary), with OpenRouter and Groq as
+fallbacks when Gemini is rate-limited, plus a deterministic rule-based
+stand-in used by tests and the eval script when no key is set.
 
-Live models (from the brief):
-  - nvidia/nemotron-3-ultra-550b-a55b:free (default)
+Live models:
+  - gemini-2.5-flash (default Gemini model, set GEMINI_CHAT_MODEL to switch)
+  - nvidia/nemotron-3-ultra-550b-a55b:free (OpenRouter fallback)
   - google/gemma-4-31b-it:free (set OPENROUTER_CHAT_MODEL to switch)
 
 Streaming: OpenRouter returns server-sent events; we yield each delta's
@@ -213,6 +214,29 @@ class GroqLLM(_ChatLLM):
         )
 
 
+class GeminiLLM(_ChatLLM):
+    """Primary chat provider (Google Gemini, OpenAI-compatible endpoint).
+
+    Gemini's OpenAI-compatible API speaks the same chat-completions
+    format (including JSON mode and SSE streaming), so the shared
+    _ChatLLM client serves it. Free tier is generous, so it is the
+    primary; OpenRouter and Groq remain as fallbacks.
+    """
+
+    def __init__(self, api_key: str | None = None, model: str | None = None,
+                 max_attempts: int = _MAX_ATTEMPTS):
+        api_key = api_key or settings.gemini_api_key
+        if not api_key:
+            raise AIError("GEMINI_API_KEY is not set. Add it to .env (see README).")
+        super().__init__(
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            api_key,
+            model or settings.gemini_chat_model,
+            "Gemini",
+            max_attempts,
+        )
+
+
 class FallbackLLM:
     """Try the primary LLM; on a rate limit, use the backup for that call.
 
@@ -340,10 +364,78 @@ class RuleBasedLLM:
             yield " ".join(words[i:i + 8]) + (" " if i + 8 < len(words) else "")
 
 
+# The models the Settings page may pick. (provider, model) pairs only —
+# a model only works with its own provider's API. Default is Gemini.
+DEFAULT_PROVIDER = "gemini"
+DEFAULT_MODEL = "gemini-2.5-flash"
+MODEL_OPTIONS = [
+    {"provider": "gemini", "model": "gemini-2.5-flash", "label": "Gemini 2.5 Flash (default)"},
+    {"provider": "gemini", "model": "gemini-2.5-pro", "label": "Gemini 2.5 Pro"},
+    {
+        "provider": "openrouter",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "label": "OpenRouter Nemotron 3 Ultra (free)",
+    },
+    {
+        "provider": "openrouter",
+        "model": "google/gemma-4-31b-it:free",
+        "label": "OpenRouter Gemma 4 31B (free)",
+    },
+    {"provider": "groq", "model": "qwen/qwen3.8-27b", "label": "Groq Qwen3 8B-27B"},
+]
+
+
+def build_llm(provider: str, model: str, max_attempts: int = _MAX_ATTEMPTS):
+    """The LLM for one (provider, model) pair. Raises AIError if that
+    provider has no API key configured."""
+    if provider == "gemini":
+        return GeminiLLM(model=model, max_attempts=max_attempts)
+    if provider == "openrouter":
+        return OpenRouterLLM(model=model, max_attempts=max_attempts)
+    if provider == "groq":
+        return GroqLLM(model=model, max_attempts=max_attempts)
+    raise AIError(f"Unknown chat provider: {provider}")
+
+
+def get_llm_for_user(db, user_id: str):
+    """The LLM for one user: their saved Settings choice first, falling
+    back to the env-based chain (get_llm) when no choice is saved or the
+    chosen provider has no key. The saved choice is tried first and the
+    env chain is the backup on a rate limit."""
+    row = None
+    try:
+        from .models import UserSettings
+
+        row = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+    except Exception:
+        row = None
+    if row is not None:
+        try:
+            chosen = build_llm(row.chat_provider, row.chat_model, max_attempts=1)
+            return FallbackLLM(chosen, get_llm())
+        except AIError:
+            pass
+    return get_llm()
+
+
 def get_llm():
-    """Primary LLM (OpenRouter), with the Groq backup when both keys are
-    set; Groq alone when only its key is set. The rule-based stand-in
-    applies only when REVIEW_FALLBACK=rule_based is set (tests/eval)."""
+    """Primary LLM (Gemini), with OpenRouter then Groq as fallbacks when
+    their keys are set; OpenRouter alone, Groq alone, or the rule-based
+    stand-in (REVIEW_FALLBACK=rule_based) when no Gemini key is set."""
+    if settings.gemini_api_key:
+        # The backup IS the retry for the primary: a rate-limited primary
+        # fails fast (1 attempt) instead of burning minutes on retries.
+        primary = GeminiLLM(max_attempts=1)
+        backup = None
+        if settings.openrouter_api_key:
+            backup = OpenRouterLLM(max_attempts=1)
+            if settings.groq_api_key:
+                backup = FallbackLLM(backup, GroqLLM())
+        elif settings.groq_api_key:
+            backup = GroqLLM()
+        if backup is not None:
+            return FallbackLLM(primary, backup)
+        return GeminiLLM()
     if settings.openrouter_api_key:
         # The backup IS the retry for the primary: a rate-limited primary
         # fails fast (1 attempt) instead of burning minutes on retries.
@@ -356,6 +448,7 @@ def get_llm():
     if settings.review_fallback == "rule_based":
         return RuleBasedLLM()
     raise AIError(
-        "OPENROUTER_API_KEY is not set. Add it to .env (see README) "
+        "No LLM API key is set. Add GEMINI_API_KEY (primary), "
+        "OPENROUTER_API_KEY or GROQ_API_KEY to .env (see README) "
         "or run with REVIEW_FALLBACK=rule_based for the eval script."
     )

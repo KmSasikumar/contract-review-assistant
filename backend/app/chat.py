@@ -18,7 +18,7 @@ import re
 from sqlalchemy.orm import Session
 
 from .embeddings import get_embedder
-from .llm import get_llm
+from .llm import get_llm_for_user
 from .models import ChatMessage, Chunk, Contract
 from .quotes import quote_in_text
 from .retrieval import content_words, format_excerpts, retrieve
@@ -70,7 +70,7 @@ def answer_stream(db: Session, contract: Contract, question: str, llm=None, embe
     Yields dicts: {"type": "token", "text": ...} during generation, then a
     final {"type": "done", "sources": [...]} with the verified sources.
     """
-    llm = llm or get_llm()
+    llm = llm or get_llm_for_user(db, contract.user_id)
     embedder = embedder or get_embedder()
     user_id = contract.user_id
 
