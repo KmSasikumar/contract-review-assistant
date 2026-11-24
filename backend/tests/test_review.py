@@ -72,3 +72,41 @@ def test_invented_quote_becomes_unclear(db):
     got = {it.key: it for it in contract.review_items}
     assert got["parties"].status == "unclear"
     assert got["parties"].quote_verified is False
+
+
+def test_empty_quote_found_becomes_unclear(db):
+    """A 'found' verdict with no quote must not stand — it is unverified."""
+    from app.llm import RuleBasedLLM
+    from app.review import run_review
+
+    class EmptyQuoteLLM(RuleBasedLLM):
+        def complete_json(self, messages):
+            out = super().complete_json(messages)
+            for it in out["items"]:
+                if it["status"] == "found":
+                    it["quote"] = ""
+            return out
+
+    with open(os.path.join(SAMPLES, "sample-contract-complete.txt"), "rb") as fh:
+        data = fh.read()
+    contract = create_contract(db, "user-a", "c.txt", len(data), "text/plain")
+    process_contract(contract.id, data, "c.txt")
+    run_review(db, contract, llm=EmptyQuoteLLM())
+    got = {it.key: it for it in contract.review_items}
+    # Every item the model called "found" must now be unclear, with no
+    # verified quote — never a green Found with no evidence.
+    assert got["parties"].status == "unclear"
+    assert got["parties"].quote_verified is False
+
+
+def test_retry_review_with_no_chunks_fails(db):
+    """Retry on a contract whose text never parsed must fail, not
+    fabricate 8 'Not found' verdicts and a 'reviewed' status."""
+    from app.routers.pipeline import retry_review
+
+    contract = create_contract(db, "user-a", "bad.pdf", 10, "application/pdf")
+    # No chunks stored (parse never succeeded).
+    result = retry_review(contract.id)
+    assert result is not None
+    assert result.status == "failed"
+    assert "re-upload" in (result.error or "")

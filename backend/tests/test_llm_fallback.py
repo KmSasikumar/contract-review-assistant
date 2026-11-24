@@ -24,6 +24,8 @@ def _chat_payload(content):
 def test_get_llm_returns_fallback_when_both_keys_set(monkeypatch):
     from app.config import settings
 
+    # Rule-based mode must be off here, or it overrides the provider chain.
+    monkeypatch.setattr(settings, "review_fallback", "")
     monkeypatch.setattr(settings, "openrouter_api_key", "or-key")
     monkeypatch.setattr(settings, "groq_api_key", "groq-key")
     llm = get_llm()
@@ -119,3 +121,38 @@ def test_complete_json_gives_up_after_retries(monkeypatch):
         raise AssertionError("expected RateLimitError")
     except RateLimitError:
         pass
+
+
+def test_rule_based_wins_over_gemini_key(monkeypatch):
+    """REVIEW_FALLBACK=rule_based is an explicit override: it must win
+    over a live Gemini key, or the 'no-key' eval run calls the live API."""
+    from app.config import settings
+    from app.llm import RuleBasedLLM
+
+    monkeypatch.setattr(settings, "gemini_api_key", "gem-key")
+    monkeypatch.setattr(settings, "review_fallback", "rule_based")
+    assert isinstance(get_llm(), RuleBasedLLM)
+
+
+def test_get_embedder_raises_without_key(monkeypatch):
+    """No OpenRouter key and no rule-based mode: fail loudly instead of
+    silently running the hash embedder in production."""
+    import pytest
+
+    from app.config import settings
+    from app.embeddings import AIError, get_embedder
+
+    monkeypatch.setattr(settings, "openrouter_api_key", "")
+    monkeypatch.setattr(settings, "review_fallback", "")
+    with pytest.raises(AIError):
+        get_embedder()
+
+
+def test_get_embedder_uses_hash_in_rule_based_mode(monkeypatch):
+    """The rule-based eval/dev mode is the only case that gets the hash stand-in."""
+    from app.config import settings
+    from app.embeddings import HashEmbedder, get_embedder
+
+    monkeypatch.setattr(settings, "openrouter_api_key", "")
+    monkeypatch.setattr(settings, "review_fallback", "rule_based")
+    assert isinstance(get_embedder(), HashEmbedder)

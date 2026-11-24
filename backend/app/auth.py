@@ -74,7 +74,10 @@ def verify_token(token: str, jwks: dict | None = None) -> str:
         # 10s of leeway is the standard tolerance (applies to exp/nbf/iat).
         leeway=10,
     )
-    if settings.clerk_issuer and claims.get("iss") != settings.clerk_issuer:
+    # The issuer check is unconditional: if CLERK_ISSUER is not configured,
+    # NO token is accepted (fail closed). A token from any other Clerk
+    # instance must never become a user id here.
+    if not settings.clerk_issuer or claims.get("iss") != settings.clerk_issuer:
         raise ValueError("wrong issuer")
     user_id = claims.get("sub")
     if not user_id:

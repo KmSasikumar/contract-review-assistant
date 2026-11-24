@@ -421,7 +421,11 @@ def get_llm_for_user(db, user_id: str):
 def get_llm():
     """Primary LLM (Gemini), with OpenRouter then Groq as fallbacks when
     their keys are set; OpenRouter alone, Groq alone, or the rule-based
-    stand-in (REVIEW_FALLBACK=rule_based) when no Gemini key is set."""
+    stand-in when no key is set. REVIEW_FALLBACK=rule_based is an explicit
+    override (eval/dev): it wins over any live provider key, or the
+    "no-key" eval run would silently call the live APIs."""
+    if settings.review_fallback == "rule_based":
+        return RuleBasedLLM()
     if settings.gemini_api_key:
         # The backup IS the retry for the primary: a rate-limited primary
         # fails fast (1 attempt) instead of burning minutes on retries.
@@ -445,8 +449,6 @@ def get_llm():
         return OpenRouterLLM()
     if settings.groq_api_key:
         return GroqLLM()
-    if settings.review_fallback == "rule_based":
-        return RuleBasedLLM()
     raise AIError(
         "No LLM API key is set. Add GEMINI_API_KEY (primary), "
         "OPENROUTER_API_KEY or GROQ_API_KEY to .env (see README) "

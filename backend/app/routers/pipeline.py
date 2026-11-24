@@ -78,6 +78,16 @@ def _process(db: Session, contract: Contract, data: bytes, filename: str) -> Non
     contract.full_text, contract.page_count = text, pages
 
     drafts = chunk_text(text)
+    if not drafts:
+        # Text parsed but nothing chunkable (e.g. only headings/page
+        # markers). Running the review on an empty index would fabricate
+        # 8 "Not found" verdicts and mark the contract "reviewed".
+        contract.status, contract.error = (
+            "failed",
+            "No readable text found in this file. Please re-upload it.",
+        )
+        db.commit()
+        return
     embedder = get_embedder()
     try:
         vectors = embedder.embed([d.text for d in drafts]) if drafts else []
@@ -121,6 +131,21 @@ def retry_review(contract_id: uuid.UUID) -> Contract | None:
         contract = db.query(Contract).filter(Contract.id == contract_id).first()
         if contract is None:
             return None
+        # A contract whose text never parsed has no chunks. Running the
+        # review against an empty index would fabricate 8 "Not found"
+        # verdicts and mark it "reviewed". Fail instead, so the user
+        # re-uploads a readable file.
+        chunk_count = (
+            db.query(Chunk).filter(Chunk.contract_id == contract.id).count()
+        )
+        if chunk_count == 0:
+            contract.status, contract.error = (
+                "failed",
+                "No text could be extracted from this file. Please re-upload it.",
+            )
+            db.commit()
+            db.refresh(contract)
+            return contract
         contract.status, contract.error = "processing", None
         db.commit()
         try:

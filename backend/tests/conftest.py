@@ -16,6 +16,9 @@ os.environ["REVIEW_FALLBACK"] = "rule_based"
 os.environ["OPENROUTER_API_KEY"] = ""
 os.environ["GROQ_API_KEY"] = ""
 os.environ["GEMINI_API_KEY"] = ""
+# The auth tests sign tokens with iss=https://test.clerk.dev; the issuer
+# check is unconditional, so the test env must carry the matching issuer.
+os.environ["CLERK_ISSUER"] = "https://test.clerk.dev"
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

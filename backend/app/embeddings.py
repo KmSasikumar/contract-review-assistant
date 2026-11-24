@@ -89,7 +89,20 @@ class HashEmbedder:
 
 
 def get_embedder():
-    """Live embedder when a key is set, hash embedder otherwise (tests only)."""
+    """Live embedder when a key is set.
+
+    With no OpenRouter key, raise instead of silently degrading to the
+    hash embedder — a Gemini-only deployment would otherwise run
+    keyword retrieval in production with no warning. The rule-based
+    eval/dev mode (REVIEW_FALLBACK=rule_based) is the only case that
+    still gets the deterministic hash stand-in.
+    """
     if settings.openrouter_api_key:
         return OpenRouterEmbedder()
-    return HashEmbedder()
+    if settings.review_fallback == "rule_based":
+        return HashEmbedder()
+    raise AIError(
+        "OPENROUTER_API_KEY is not set, so no live embedder is available. "
+        "Add it to .env (see README) or run with REVIEW_FALLBACK=rule_based "
+        "for the eval script."
+    )

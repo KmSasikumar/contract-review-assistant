@@ -22,6 +22,17 @@ def test_upload_rejects_oversize(client, monkeypatch):
     assert resp.status_code == 413
 
 
+def test_upload_rejects_large_file_over_limit(client, monkeypatch):
+    """A file spanning several read chunks is rejected once it passes the
+    limit — the whole body is never buffered into memory first."""
+    import app.routers.contracts as contracts_router
+
+    monkeypatch.setattr(contracts_router, "MAX_BYTES", 1024 * 1024)  # 1 MB
+    files = {"file": ("a.txt", io.BytesIO(b"x" * (2 * 1024 * 1024 + 100)), "text/plain")}
+    resp = client.post("/api/contracts", files=files)
+    assert resp.status_code == 413
+
+
 def test_upload_rejects_empty_text(client):
     files = {"file": ("a.txt", io.BytesIO(b"   "), "text/plain")}
     resp = client.post("/api/contracts", files=files)

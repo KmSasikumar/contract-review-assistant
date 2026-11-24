@@ -30,6 +30,11 @@ app.include_router(settings_router.router)
 
 @app.on_event("startup")
 def on_startup():
+    # CLERK_ISSUER is mandatory: without it, token verification cannot
+    # tell this Clerk instance's tokens from any other instance's.
+    # Fail at startup rather than silently accepting unverified issuers.
+    if not settings.clerk_issuer:
+        raise RuntimeError("CLERK_ISSUER is not set. See README / .env.example.")
     init_db()
 
 

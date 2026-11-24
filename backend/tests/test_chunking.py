@@ -39,3 +39,25 @@ def test_long_paragraph_splits_on_sentences():
 def test_empty_text_yields_no_chunks():
     assert chunk_text("") == []
     assert chunk_text("\n\n  \n") == []
+
+
+def test_unpunctuated_clause_becomes_chunk():
+    """A clause with no terminal punctuation (e.g. a DOCX table cell) is
+    content, not a heading — it must become a chunk, not be dropped."""
+    text = "Payment\nNet 30\nLiability cap\nUSD 500000"
+    chunks = chunk_text(text)
+    assert [c.text for c in chunks] == [
+        "Payment",
+        "Net 30",
+        "Liability cap",
+        "USD 500000",
+    ]
+
+
+def test_allcaps_heading_still_section():
+    """A genuinely ALL-CAPS heading still becomes the section."""
+    text = "PAYMENT TERMS\n\nPay within 30 days.\n\nARTICLE II\n\nGoverning law is India."
+    chunks = chunk_text(text)
+    assert chunks[0].section == "PAYMENT TERMS"
+    assert chunks[0].text == "Pay within 30 days."
+    assert chunks[1].section == "ARTICLE II"

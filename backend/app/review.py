@@ -92,8 +92,13 @@ def run_review(
         chunk_id = raw.get("chunk_id")
 
         verified = False
-        if status == "found" and quote:
-            verified = quote_in_text(quote, contract.full_text)
+        if status == "found":
+            # A "Found" verdict is only real when its quote is verified.
+            # An empty quote skips verification entirely, so it must fail
+            # the same way an unverifiable quote does — otherwise the
+            # user sees a green "Found" with no evidence at all.
+            if quote:
+                verified = quote_in_text(quote, contract.full_text)
             if not verified:
                 status = "unclear"
                 summary = summary or "The quoted text could not be verified in the contract."

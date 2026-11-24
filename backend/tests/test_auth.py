@@ -45,6 +45,17 @@ def test_wrong_issuer_rejected(keypair, monkeypatch):
         auth.verify_token(token, jwks=jwks)
 
 
+def test_token_rejected_when_issuer_unset(keypair, monkeypatch):
+    """Fail closed: with CLERK_ISSUER unset, no token is accepted, even
+    one whose signature verifies against the supplied JWKS."""
+    key, priv_pem = keypair
+    jwks = make_jwks(key.public_key())
+    monkeypatch.setattr(settings, "clerk_issuer", "")
+    token = make_token(priv_pem, iss="https://test.clerk.dev")
+    with pytest.raises(Exception):
+        auth.verify_token(token, jwks=jwks)
+
+
 def test_unknown_kid_rejected(keypair):
     key, priv_pem = keypair
     jwks = make_jwks(key.public_key(), kid="other-key")

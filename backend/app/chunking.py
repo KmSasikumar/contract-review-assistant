@@ -10,14 +10,21 @@ recorded as the chunk's section.
 import re
 
 PAGE_RE = re.compile(r"\[\[PAGE (\d+)\]\]")
+# "Section 3" / "Article II" / "1. ..." headings — case-insensitive.
 HEADING_RE = re.compile(
     r"^\s*("
     r"(?:section|article|clause)\s+\d+[A-Za-z0-9.\-]*"
     r"|\d+[.)]\s+\S.*"
-    r"|[A-Z][A-Z0-9 ,&\-]{4,}"
     r")\s*$",
     re.IGNORECASE,
 )
+# ALL-CAPS headings only ("ARTICLE II", "PAYMENT TERMS"). Case-sensitive
+# and letters-only on purpose: with IGNORECASE this class also matches
+# ordinary lowercase clauses ("Payment", "Net 30"), and with digits it
+# matches table-cell values ("USD 500000", "NET 30") — either way the
+# chunker would silently drop real contract content as if it were a
+# heading. A line with digits is a value, not a heading; it stays a chunk.
+ALLCAPS_HEADING_RE = re.compile(r"^\s*[A-Z][A-Z ,&\-]{4,}\s*$")
 # A very long paragraph is split on sentence boundaries so no chunk is huge.
 MAX_CHUNK_CHARS = 2000
 SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"(])")
@@ -62,7 +69,7 @@ def chunk_text(full_text: str) -> list[ChunkDraft]:
             page = int(m.group(1))
             continue
         # A heading line becomes the section for the chunks that follow it.
-        if HEADING_RE.match(para) and len(para) < 120:
+        if (HEADING_RE.match(para) or ALLCAPS_HEADING_RE.match(para)) and len(para) < 120:
             section = para
             continue
         chunks.extend(_split_long(para, page, section))

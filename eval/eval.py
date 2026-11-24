@@ -44,6 +44,7 @@ def main() -> int:
         # would leak in and the "no-key" run would call the live APIs.
         os.environ["OPENROUTER_API_KEY"] = ""
         os.environ["GROQ_API_KEY"] = ""
+        os.environ["GEMINI_API_KEY"] = ""
         os.environ["REVIEW_FALLBACK"] = "rule_based"
 
     from app import db as dbmod

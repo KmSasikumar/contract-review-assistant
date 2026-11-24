@@ -31,6 +31,25 @@ def list_contracts(db: Session = Depends(get_db), user: CurrentUser = Depends(ge
     return isolation.list_contracts_for_user(db, user.id)
 
 
+async def _read_bounded(file: UploadFile, limit: int) -> bytes:
+    """Read the upload in 1 MB chunks, aborting as soon as it exceeds the
+    limit, so an over-limit file is never fully buffered into memory."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File is over the {settings.max_upload_mb} MB limit.",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.post("", response_model=ContractOut, status_code=201)
 async def upload_contract(
     background: BackgroundTasks,
@@ -41,11 +60,7 @@ async def upload_contract(
     name = file.filename or "contract"
     if not name.lower().endswith(ALLOWED_EXTS):
         raise HTTPException(status_code=400, detail="Upload a PDF, DOCX or TXT file.")
-    data = await file.read()
-    if len(data) > MAX_BYTES:
-        raise HTTPException(
-            status_code=413, detail=f"File is over the {settings.max_upload_mb} MB limit."
-        )
+    data = await _read_bounded(file, MAX_BYTES)
     contract = pipeline.create_contract(db, user.id, name, len(data), file.content_type or "")
     # Hand the raw bytes to the background task (small enough: <= 20 MB).
     background.add_task(pipeline.process_contract, contract.id, data, name)
