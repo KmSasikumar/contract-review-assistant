@@ -40,6 +40,24 @@ def test_parse_docx():
     assert "Payment clause." in text
 
 
+def test_parse_docx_table_row_stays_together():
+    """A table row's label and value stay on one line, so the review
+    sees them together instead of attributing the wrong cell's value."""
+    from docx import Document
+
+    buf = io.BytesIO()
+    doc = Document()
+    table = doc.add_table(rows=2, cols=2)
+    table.rows[0].cells[0].text = "Payment"
+    table.rows[0].cells[1].text = "Net 30"
+    table.rows[1].cells[0].text = "Governing law"
+    table.rows[1].cells[1].text = "India"
+    doc.save(buf)
+    text, pages = parse_file("a.docx", buf.getvalue())
+    assert "Payment | Net 30" in text
+    assert "Governing law | India" in text
+
+
 def test_parse_unsupported_type():
     try:
         parse_file("a.png", b"\x89PNG")

@@ -49,11 +49,15 @@ def parse_docx(data: bytes) -> tuple[str, int]:
     for para in doc.paragraphs:
         parts.append(para.text)
     # Tables often hold contract terms; include their cell text too.
+    # Join each row's cells into one line ("Label | Value") so a term and
+    # its value stay in the same chunk. Appending each cell as its own
+    # line splits label from value, and the review then either misses the
+    # term or attributes the wrong cell's value to it.
     for table in doc.tables:
         for row in table.rows:
-            for cell in row.cells:
-                if cell.text.strip():
-                    parts.append(cell.text)
+            cells = [c.text.strip() for c in row.cells if c.text.strip()]
+            if cells:
+                parts.append(" | ".join(cells))
     return _clean("\n".join(parts)), 1
 
 
