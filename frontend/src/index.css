@@ -72,6 +72,11 @@ body {
   background: none; border: none; color: var(--bad); cursor: pointer; font-size: 0.85rem;
 }
 
+.cancel-btn {
+  position: absolute; top: 34px; right: 8px;
+  background: none; border: none; color: var(--muted); cursor: pointer; font-size: 0.85rem;
+}
+
 .detail { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; min-width: 0; }
 .detail h2 { margin: 0 0 4px; word-break: break-word; }
 .tabs { display: flex; gap: 8px; margin: 16px 0; flex-wrap: wrap; }

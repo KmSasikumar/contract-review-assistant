@@ -27,6 +27,7 @@ export default function App() {
   const [uploading, setUploading] = useState(false)
   const [authMode, setAuthMode] = useState('signin') // signin | signup
   const [showSettings, setShowSettings] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   async function refresh() {
     try {
@@ -66,14 +67,17 @@ export default function App() {
     }
   }
 
+  // Two-step inline confirm (no window.confirm: it silently returns false
+  // in headless/automated browsers, so the Delete button did nothing).
   async function onDelete(id) {
-    if (!window.confirm('Delete this contract and its review and chat history?')) return
     try {
       await apiJson(getToken, `/api/contracts/${id}`, { method: 'DELETE' })
       setContracts((prev) => prev.filter((c) => c.id !== id))
       if (selectedId === id) setSelectedId(null)
     } catch (e) {
       setError(e.message)
+    } finally {
+      setConfirmDeleteId(null)
     }
   }
 
@@ -179,11 +183,26 @@ export default function App() {
                       className="delete-btn"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onDelete(c.id)
+                        if (confirmDeleteId === c.id) onDelete(c.id)
+                        else setConfirmDeleteId(c.id)
                       }}
                     >
-                      Delete
+                      {confirmDeleteId === c.id
+                        ? 'Confirm delete?'
+                        : 'Delete'}
                     </button>
+                    {confirmDeleteId === c.id && (
+                      <button
+                        type="button"
+                        className="cancel-btn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setConfirmDeleteId(null)
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
