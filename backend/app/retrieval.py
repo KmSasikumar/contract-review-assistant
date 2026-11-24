@@ -112,9 +112,14 @@ def retrieve(
     # Vector scores: pgvector in SQL on Postgres, Python cosine otherwise.
     vec_scores: dict[str, float] = {}
     if query_embedding is not None and db.bind.dialect.name == "postgresql":
+        # NOTE: Chunk.embedding is an EmbeddingType TypeDecorator, whose
+        # comparator does NOT expose pgvector's cosine_distance() method
+        # (that raised AttributeError and 500'd every live review on
+        # 24 Nov 2026). Use the generic .op("<=>") operator instead —
+        # pgvector's cosine-distance operator — which any column supports.
         rows = (
             db.execute(
-                select(Chunk.id, Chunk.embedding.cosine_distance(query_embedding).label("d"))
+                select(Chunk.id, Chunk.embedding.op("<=>")(query_embedding).label("d"))
                 .where(Chunk.user_id == user_id, Chunk.contract_id == contract_id)
                 .order_by("d")
                 .limit(top_k * 3)
