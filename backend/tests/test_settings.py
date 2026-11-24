@@ -61,3 +61,23 @@ def test_get_llm_for_user_falls_back_when_provider_key_missing(db):
     db.commit()
     llm = get_llm_for_user(db, "user-a")
     assert llm.__class__.__name__ == "RuleBasedLLM"
+
+
+def test_health_endpoint_responds(client):
+    # Regression test (24 Nov 2026): main.py imported the settings ROUTER
+    # under the name `settings`, shadowing the config Settings object, so
+    # /api/health raised AttributeError and returned 500 on the live app.
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert isinstance(data["ai_configured"], bool)
+    assert isinstance(data["auth_configured"], bool)
+
+
+def test_health_reports_ai_configured_when_gemini_key_set(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "gemini_api_key", "gemini-key")
+    data = client.get("/api/health").json()
+    assert data["ai_configured"] is True

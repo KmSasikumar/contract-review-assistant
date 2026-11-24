@@ -4,7 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import init_db
-from .routers import chat, contracts, reviews, settings
+from .routers import chat, contracts, reviews
+from .routers import settings as settings_router
 from .schemas import HealthOut
 
 app = FastAPI(title="Contract Review Assistant", version="1.0.0")
@@ -24,7 +25,7 @@ app.add_middleware(
 app.include_router(contracts.router)
 app.include_router(reviews.router)
 app.include_router(chat.router)
-app.include_router(settings.router)
+app.include_router(settings_router.router)
 
 
 @app.on_event("startup")
