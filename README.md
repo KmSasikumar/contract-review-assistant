@@ -368,7 +368,7 @@ passes.
 cd backend && .venv/bin/python -m pytest tests -q
 ```
 
-55 tests, no key and no network needed: parsing, chunking, quote
+64 tests, no key and no network needed: parsing, chunking, quote
 verification, Clerk-token verification (throwaway RSA key + local JWKS),
 per-user isolation (404s for another user's ids), upload validation,
 review pipeline (both sample contracts), chat grounding, settings
@@ -380,7 +380,7 @@ merely unsetting them would leak a real key from `.env` into the suite
 
 ## Results
 
-- **Tests: 55 passed, 0 failed** (SQLite, rule-based stand-in).
+- **Tests: 64 passed, 0 failed** (SQLite, rule-based stand-in).
 - **Eval, pipeline mode (no key): 18/18 = 100%.**
 - **Eval, live mode (OpenRouter quota exhausted that day, so Groq backup +
   keyword retrieval): 18/18 = 100%.** All 16 checklist items correct on
@@ -393,6 +393,25 @@ merely unsetting them would leak a real key from `.env` into the suite
   verification strict); chat answered the monthly-fee question correctly
   with a Sources citation. Delete verified live after the two-step-confirm
   fix (list empty across two reloads).
+- **Bug fixes, 24 Nov 2026 (commit 57b7721, from an independent bug report
+  with 18 reproduction probes):** three Criticals and four Highs fixed,
+  each with a regression test. (1) The chunker's heading regex silently
+  dropped unpunctuated clauses — DOCX table cells like "Payment" or
+  "USD 500000" never became chunks, so the review reported them "Not
+  found". The ALL-CAPS heading pattern is now case-sensitive and
+  letters-only; a line with digits is a value, not a heading. (2) A
+  "Found" verdict with an empty quote no longer stands — it becomes
+  "unclear", so a finding is never shown without verified evidence.
+  (3) "Retry review" on a contract whose text never parsed no longer
+  fabricates 8 "Not found" verdicts; it fails with a re-upload message.
+  (4) `CLERK_ISSUER` is mandatory — token verification fails closed when
+  it is unset, and the app raises at startup. (5) `get_embedder()` raises
+  instead of silently falling back to the hash embedder when no live
+  embedding key is set. (6) Uploads are read in 1 MB chunks and aborted
+  past the size limit instead of being fully buffered first. (7)
+  `REVIEW_FALLBACK=rule_based` genuinely overrides live providers, and
+  the eval script blanks the Gemini key too, so a "no-key" eval run can
+  no longer call the live Gemini API.
 - **Frontend production build: passes** (`npm run build`, ~250 kB JS).
 - **HTTP smoke test (SQLite):** `/api/health` reports
   `ai_configured: true, auth_configured: false` (no Clerk keys yet);
