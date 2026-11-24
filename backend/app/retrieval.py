@@ -3,8 +3,7 @@ and one contract.
 
 Two signals, merged:
   1. Vector similarity (cosine) between the query embedding and each chunk
-     embedding. On Postgres this runs in SQL via pgvector's <=> operator;
-     on SQLite (tests) it runs in Python over the stored vectors.
+     embedding, computed in Python over the fetched chunks.
   2. Keyword overlap between the query's keywords and the chunk text —
      contracts reuse the same legal words, so a keyword hit is strong
      evidence even when the embedding is weak.
@@ -109,26 +108,19 @@ def retrieve(
     if not chunks:
         return []
 
-    # Vector scores: pgvector in SQL on Postgres, Python cosine otherwise.
+    # Vector scores: cosine similarity in Python over the fetched chunks.
+    #
+    # NOTE (24 Nov 2026): this used to run the similarity in SQL on Postgres
+    # via pgvector's <=> operator. That broke twice in one day — first
+    # Chunk.embedding.cosine_distance() does not exist on the EmbeddingType
+    # TypeDecorator (AttributeError, 500'd every review), then the .op("<=>")
+    # replacement failed live with "'float' object is not subscriptable"
+    # in the shared retrieve path. A contract has tens of chunks, not
+    # thousands, so Python cosine over the fetched rows is fast enough
+    # (<1 ms) and has no pgvector/SQLAlchemy interaction surface at all.
+    # Keyword hits still rank first; the vector score only breaks ties.
     vec_scores: dict[str, float] = {}
-    if query_embedding is not None and db.bind.dialect.name == "postgresql":
-        # NOTE: Chunk.embedding is an EmbeddingType TypeDecorator, whose
-        # comparator does NOT expose pgvector's cosine_distance() method
-        # (that raised AttributeError and 500'd every live review on
-        # 24 Nov 2026). Use the generic .op("<=>") operator instead —
-        # pgvector's cosine-distance operator — which any column supports.
-        rows = (
-            db.execute(
-                select(Chunk.id, Chunk.embedding.op("<=>")(query_embedding).label("d"))
-                .where(Chunk.user_id == user_id, Chunk.contract_id == contract_id)
-                .order_by("d")
-                .limit(top_k * 3)
-            )
-            .all()
-        )
-        for row in rows:
-            vec_scores[str(row.id)] = 1.0 - float(row.d)
-    elif query_embedding is not None:
+    if query_embedding is not None:
         for ch in chunks:
             if ch.embedding:
                 vec_scores[str(ch.id)] = cosine(query_embedding, ch.embedding)

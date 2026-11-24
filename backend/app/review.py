@@ -79,7 +79,11 @@ def run_review(
         excerpts = format_excerpts(chunks)
         try:
             parsed = llm.complete_json(review_prompt(item, excerpts))
-            raw = (parsed.get("items") or [{}])[0]
+            # Guard: if the model returns "items" as a non-list (a float,
+            # a dict, a string), indexing it raises TypeError and fails
+            # the whole review. Only a real list is usable.
+            items = parsed.get("items")
+            raw = items[0] if isinstance(items, list) and items else {}
         except Exception:
             raw = {}
         status = raw.get("status") if raw.get("status") in ("found", "not_found", "unclear") else "unclear"

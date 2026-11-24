@@ -4,6 +4,8 @@ Runs in a background task so a large file never blocks the upload request.
 Each step updates the contract status; any failure lands in ``error`` and
 sets status ``failed`` (the frontend shows the message and offers a retry).
 """
+import logging
+import traceback
 import uuid
 
 from sqlalchemy.orm import Session
@@ -14,6 +16,8 @@ from ..embeddings import HashEmbedder, RateLimitError, get_embedder
 from ..models import Chunk, Contract
 from ..parsing import ParseError, parse_file
 from ..review import run_review
+
+logger = logging.getLogger(__name__)
 
 
 def create_contract(db: Session, user_id: str, filename: str, size: int, mime: str) -> Contract:
@@ -45,6 +49,10 @@ def process_contract(contract_id: uuid.UUID, data: bytes, filename: str) -> None
             # this, the contract stays "processing" forever and the
             # frontend polls it forever — the user sees a stuck spinner
             # with no error and no retry button.
+            # Log the FULL traceback: str(exc) alone hides the failing
+            # line (24 Nov 2026: two live review failures were diagnosed
+            # only from the one-line message because no traceback was logged).
+            logger.exception("process_contract failed for %s: %s", contract_id, exc)
             try:
                 db.rollback()
             except Exception:
@@ -101,6 +109,7 @@ def _process(db: Session, contract: Contract, data: bytes, filename: str) -> Non
         run_review(db, contract, embedder=embedder)
         contract.status, contract.error = "reviewed", None
     except Exception as exc:  # AI unavailable (no key / rate limit / outage)
+        logger.exception("run_review failed for %s: %s", contract.id, exc)
         contract.status, contract.error = "failed", str(exc)
     db.commit()
 
@@ -118,6 +127,7 @@ def retry_review(contract_id: uuid.UUID) -> Contract | None:
             run_review(db, contract)
             contract.status, contract.error = "reviewed", None
         except Exception as exc:
+            logger.exception("retry_review failed for %s: %s", contract.id, exc)
             contract.status, contract.error = "failed", str(exc)
         db.commit()
         db.refresh(contract)
